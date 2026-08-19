@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         아카라이브 일→한 작성 자동번역
+// @name         Arca JR->KR Write Auto Translate
 // @namespace    arca.jpko.writer
 // @version      10.0.0
 // @description  아카라이브 제목/본문/댓글 일본어 자동 한국어 번역
