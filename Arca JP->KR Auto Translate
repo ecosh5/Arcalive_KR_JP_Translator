@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         아카라이브 일본어 → 한국어
+// @name          Arca JP->KR Auto Translate
 // @namespace    jpko.arca
 // @version      7.0.0
 // @match        *://arca.live/*
