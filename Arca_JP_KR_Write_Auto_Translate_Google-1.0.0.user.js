@@ -17,7 +17,7 @@
     // =========================================================
 
     // 제목 / 댓글 번역 대기시간
-    const DELAY = 500;
+    const DELAY = 1000;
 
     const BODY_SELECTOR =
         '.fr-element.fr-view[contenteditable="true"]';
