@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         아카라이브 일→한 작성 자동번역 (API 키 불필요)
-// @namespace    arca.jpko.writer
-// @version      11.0.0
+// @name         아카라이브 일→한 작성 자동번역
+// @namespace    arca.kroj.writer.jatok
+// @version      12.1.0
 // @description  아카라이브 제목/본문/댓글 일본어 자동 한국어 번역 - API 키 불필요
 // @match        *://arca.live/*
 // @grant        GM_xmlhttpRequest
@@ -12,11 +12,6 @@
 (() => {
     'use strict';
 
-    // =========================================================
-    // 설정
-    // =========================================================
-
-    // 제목 / 댓글 번역 대기시간
     const DELAY = 500;
 
     const BODY_SELECTOR =
@@ -28,15 +23,21 @@
     const REPLY_SELECTOR =
         'textarea.reply-form-textarea';
 
+    // 제목 구분자
+    const SEPARATOR =
+        ' / ';
+
     // 일본어 판별
     const JAPANESE =
         /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
 
+
     // =========================================================
-    // 공통 텍스트
+    // 공통
     // =========================================================
 
     function getText(element) {
+
         return (
             element.innerText ||
             element.textContent ||
@@ -46,16 +47,20 @@
             .trim();
     }
 
+
     function hasJapanese(text) {
+
         return JAPANESE.test(text);
     }
 
+
     // =========================================================
-    // Google 번역
-    // API KEY 필요 없음
+    // Google Translate
+    // 일본어 → 한국어
     // =========================================================
 
     function translate(text) {
+
         return new Promise((resolve, reject) => {
 
             const url =
@@ -67,12 +72,13 @@
                 '&q=' +
                 encodeURIComponent(text);
 
+
             GM_xmlhttpRequest({
+
                 method: 'GET',
-
                 url: url,
-
                 timeout: 30000,
+
 
                 onload(response) {
 
@@ -82,6 +88,7 @@
                             response.status < 200 ||
                             response.status >= 300
                         ) {
+
                             reject(
                                 new Error(
                                     `번역 요청 오류 ${response.status}`
@@ -91,27 +98,18 @@
                             return;
                         }
 
+
                         const data =
                             JSON.parse(
                                 response.responseText
                             );
 
-                        /*
-                         * Google Translate 응답 예:
-                         *
-                         * [
-                         *   [
-                         *     ["번역문", "원문", ...],
-                         *     ["번역문", "원문", ...]
-                         *   ],
-                         *   ...
-                         * ]
-                         */
 
                         if (
                             !Array.isArray(data) ||
                             !Array.isArray(data[0])
                         ) {
+
                             reject(
                                 new Error(
                                     '번역 결과 형식이 올바르지 않습니다.'
@@ -120,6 +118,7 @@
 
                             return;
                         }
+
 
                         const result =
                             data[0]
@@ -133,7 +132,11 @@
                                 )
                                 .join('');
 
-                        if (!result.trim()) {
+
+                        if (
+                            !result.trim()
+                        ) {
+
                             reject(
                                 new Error(
                                     '번역 결과가 없습니다.'
@@ -143,6 +146,7 @@
                             return;
                         }
 
+
                         resolve(
                             result.trim()
                         );
@@ -150,9 +154,9 @@
                     } catch (error) {
 
                         reject(error);
-
                     }
                 },
+
 
                 onerror() {
 
@@ -161,34 +165,37 @@
                             '번역 서버에 연결할 수 없습니다.'
                         )
                     );
-
                 },
+
 
                 ontimeout() {
 
                     reject(
                         new Error(
-                            '번역 요청 시간이 초과되었습니다.'
+                            '번역 요청이 시간 초과되었습니다.'
                         )
                     );
-
                 }
+
             });
         });
     }
 
+
     // =========================================================
-    // 본문 ID 생성
+    // 본문 ID
     // =========================================================
 
     let idCounter = 0;
+
 
     function makeId() {
 
         idCounter++;
 
+
         return (
-            'jpko_' +
+            'kroj_' +
             Date.now() +
             '_' +
             idCounter +
@@ -199,25 +206,21 @@
         );
     }
 
-    // =========================================================
-    // 원문 ID 확보
-    // =========================================================
 
     function ensureSourceId(p) {
 
-        if (!p.dataset.jpkoSourceId) {
+        if (
+            !p.dataset.krojSourceId
+        ) {
 
-            p.dataset.jpkoSourceId =
+            p.dataset.krojSourceId =
                 makeId();
-
         }
 
-        return p.dataset.jpkoSourceId;
+
+        return p.dataset.krojSourceId;
     }
 
-    // =========================================================
-    // 해당 원문의 한국어 번역 찾기
-    // =========================================================
 
     function findTranslation(
         editor,
@@ -225,12 +228,13 @@
     ) {
 
         return editor.querySelector(
-            `p[data-jpko-translation-for="${CSS.escape(sourceId)}"]`
+            `p[data-kroj-translation-for="${CSS.escape(sourceId)}"]`
         );
     }
 
+
     // =========================================================
-    // 본문 한 문장 번역
+    // 본문 번역
     // =========================================================
 
     async function translateParagraph(
@@ -242,67 +246,65 @@
             !p ||
             !p.isConnected
         ) {
+
             return;
         }
 
-        /*
-         * 자동 생성 한국어는 다시 번역하지 않음
-         */
+
+        // 자동 생성된 한국어 문장은 번역하지 않음
+
         if (
-            p.dataset.jpkoTranslation === '1'
+            p.dataset.krojTranslation === '1'
         ) {
+
             return;
         }
+
 
         const text =
             getText(p);
 
-        /*
-         * 빈 문단
-         */
+
         if (!text) {
+
             return;
         }
 
-        /*
-         * 일본어가 없는 문단은 번역하지 않음
-         */
+
+        // 일본어가 없는 문장은 번역하지 않음
+
         if (
             !hasJapanese(text)
         ) {
+
             return;
         }
 
-        /*
-         * 원문 ID
-         */
+
         const sourceId =
             ensureSourceId(p);
 
-        /*
-         * 기존 번역 찾기
-         */
+
         let translation =
             findTranslation(
                 editor,
                 sourceId
             );
 
-        /*
-         * 기존 번역이 있고
-         * 원문도 그대로라면 끝
-         */
+
+        // 같은 원문으로 이미 번역되어 있으면 종료
+
         if (
             translation &&
-            translation.dataset.jpkoSource === text
+            translation.dataset.krojSource === text
         ) {
+
             return;
         }
 
-        /*
-         * 수정된 원문이면
-         * 기존 번역 삭제
-         */
+
+        // 원문이 수정된 경우 기존 번역 삭제
+
         if (translation) {
 
             translation.remove();
@@ -310,35 +312,32 @@
             translation = null;
         }
 
+
         console.log(
             '[일→한] 본문 번역 요청:',
             text
         );
 
+
         try {
 
-            /*
-             * 번역
-             */
             const korean =
                 await translate(text);
 
-            /*
-             * 번역 중 원문이 삭제됐으면
-             * 결과를 넣지 않음
-             */
+
             if (
                 !p.isConnected
             ) {
+
                 return;
             }
 
-            /*
-             * 번역 중 원문이 수정됐으면
-             * 결과를 넣지 않음
-             */
+
             const currentText =
                 getText(p);
+
+
+            // 번역하는 동안 원문이 수정되었으면 적용하지 않음
 
             if (
                 currentText !== text
@@ -351,51 +350,52 @@
                 return;
             }
 
-            /*
-             * 혹시 다른 경로에서 이미 생성됐는지 확인
-             */
+
+            // 다른 번역이 이미 생성됐는지 확인
+
             const existing =
                 findTranslation(
                     editor,
                     sourceId
                 );
 
+
             if (existing) {
+
                 return;
             }
+
 
             // =================================================
             // 한국어 문단 생성
             // =================================================
 
             const ko =
-                document.createElement('p');
+                document.createElement(
+                    'p'
+                );
+
 
             ko.textContent =
                 korean;
 
-            /*
-             * 자동 번역문 표시
-             */
-            ko.dataset.jpkoTranslation =
+
+            ko.dataset.krojTranslation =
                 '1';
 
-            /*
-             * 어떤 원문에 대응하는지 기록
-             */
-            ko.dataset.jpkoTranslationFor =
+
+            ko.dataset.krojTranslationFor =
                 sourceId;
 
-            /*
-             * 어떤 원문으로 번역했는지 기록
-             */
-            ko.dataset.jpkoSource =
+
+            ko.dataset.krojSource =
                 text;
 
-            /*
-             * 원문 바로 뒤에 삽입
-             */
+
+            // 원문 바로 뒤
+
             p.after(ko);
+
 
             console.log(
                 '[일→한] 본문 번역 완료:',
@@ -404,18 +404,19 @@
                 korean
             );
 
+
         } catch (error) {
 
             console.error(
                 '[일→한] 본문 번역 실패:',
                 error
             );
-
         }
     }
 
+
     // =========================================================
-    // Enter 처리
+    // 본문 Enter
     // =========================================================
 
     function connectEnter(editor) {
@@ -424,100 +425,104 @@
             'keydown',
             event => {
 
-                /*
-                 * Enter만 처리
-                 *
-                 * Shift+Enter는 일반 줄바꿈
-                 */
                 if (
                     event.key !== 'Enter' ||
                     event.shiftKey
                 ) {
+
                     return;
                 }
 
-                /*
-                 * 현재 커서가 있는 p 찾기
-                 */
+
                 const selection =
                     window.getSelection();
+
 
                 if (
                     !selection ||
                     !selection.rangeCount
                 ) {
+
                     return;
                 }
 
+
                 let node =
                     selection.anchorNode;
+
 
                 if (
                     node &&
                     node.nodeType === Node.TEXT_NODE
                 ) {
+
                     node =
                         node.parentElement;
                 }
 
+
                 const p =
                     node?.closest?.('p');
+
 
                 if (
                     !p ||
                     !editor.contains(p)
                 ) {
+
                     return;
                 }
 
-                /*
-                 * 빈 문단이면 기본 Enter
-                 */
+
                 const text =
                     getText(p);
 
+
                 if (!text) {
+
                     return;
                 }
 
-                /*
-                 * 우리가 직접 Enter 처리
-                 */
+
                 event.preventDefault();
 
-                /*
-                 * 새 문단 생성
-                 */
+
+                // 새 문단
+
                 const newP =
-                    document.createElement('p');
+                    document.createElement(
+                        'p'
+                    );
+
 
                 newP.innerHTML =
                     '<br>';
 
-                /*
-                 * 원문 바로 뒤에 삽입
-                 */
+
                 p.after(newP);
 
-                /*
-                 * 새 문단으로 커서 이동
-                 */
+
+                // 새 문단으로 커서 이동
+
                 const range =
                     document.createRange();
+
 
                 range.selectNodeContents(
                     newP
                 );
 
+
                 range.collapse(true);
+
 
                 selection.removeAllRanges();
 
                 selection.addRange(range);
 
-                /*
-                 * 방금 끝낸 문장 번역
-                 */
+
+                // 방금 입력한 문장 번역
+
                 translateParagraph(
                     editor,
                     p
@@ -528,8 +533,9 @@
         );
     }
 
+
     // =========================================================
-    // 본문 blur 처리
+    // 본문 Blur
     // =========================================================
 
     function connectBlur(editor) {
@@ -539,29 +545,34 @@
             event => {
 
                 const p =
-                    event.target.closest?.('p');
+                    event.target.closest?.(
+                        'p'
+                    );
+
 
                 if (
                     !p ||
                     !editor.contains(p)
                 ) {
+
                     return;
                 }
+
 
                 setTimeout(
                     () => {
 
-                        /*
-                         * 다시 본문 안으로 들어갔다면
-                         * 굳이 번역하지 않음
-                         */
+                        // 다시 본문으로 들어온 경우 무시
+
                         if (
                             editor.contains(
                                 document.activeElement
                             )
                         ) {
+
                             return;
                         }
+
 
                         translateParagraph(
                             editor,
@@ -571,14 +582,14 @@
                     },
                     DELAY
                 );
-
             },
             true
         );
     }
 
+
     // =========================================================
-    // 본문 input
+    // 본문 Input
     // =========================================================
 
     function connectInput(editor) {
@@ -587,17 +598,14 @@
             'input',
             () => {
 
-                /*
-                 * 입력 중에는 번역하지 않음.
-                 *
-                 * Enter 또는 본문 밖으로 나갔을 때
-                 * 번역.
-                 */
+                // 입력 중에는 번역하지 않음.
+                // Enter / blur에서 처리.
 
             },
             true
         );
     }
+
 
     // =========================================================
     // 본문 연결
@@ -606,13 +614,16 @@
     function connectBody(editor) {
 
         if (
-            editor.dataset.jpkoConnected === '1'
+            editor.dataset.krojConnected === '1'
         ) {
+
             return;
         }
 
-        editor.dataset.jpkoConnected =
+
+        editor.dataset.krojConnected =
             '1';
+
 
         connectEnter(editor);
 
@@ -620,26 +631,24 @@
 
         connectInput(editor);
 
+
         console.log(
             '[일→한] 본문 연결 완료'
         );
     }
 
-    // =========================================================
-    // 본문 찾기
-    // =========================================================
 
     function scanBody() {
 
-        const editors =
-            document.querySelectorAll(
+        document
+            .querySelectorAll(
                 BODY_SELECTOR
+            )
+            .forEach(
+                connectBody
             );
-
-        editors.forEach(
-            connectBody
-        );
     }
+
 
     // =========================================================
     // 제목 / 댓글 상태
@@ -648,18 +657,29 @@
     const normalStates =
         new WeakMap();
 
+
     function getNormalState(element) {
 
         let state =
             normalStates.get(element);
 
+
         if (!state) {
 
             state = {
+
                 timer: null,
+
                 running: false,
-                lastText: ''
+
+                original: '',
+
+                translation: '',
+
+                internal: false
+
             };
+
 
             normalStates.set(
                 element,
@@ -667,69 +687,258 @@
             );
         }
 
+
         return state;
     }
+
+
+    // =========================================================
+    // 제목 / 댓글 번역문 제거
+    // =========================================================
+
+    function removeInlineTranslation(
+        element
+    ) {
+
+        const state =
+            getNormalState(element);
+
+
+        if (
+            !state.original ||
+            !state.translation
+        ) {
+
+            return element.value;
+        }
+
+
+        const current =
+            element.value;
+
+
+        // -----------------------------------------------------
+        // 댓글
+        //
+        // 日本語
+        // 한국어
+        // -----------------------------------------------------
+
+        if (
+            element instanceof HTMLTextAreaElement
+        ) {
+
+            const suffix =
+                '\n' +
+                state.translation;
+
+
+            if (
+                current.endsWith(
+                    suffix
+                )
+            ) {
+
+                return current.slice(
+                    0,
+                    -suffix.length
+                );
+            }
+        }
+
+
+        // -----------------------------------------------------
+        // 제목
+        //
+        // 日本語 / 한국어
+        // -----------------------------------------------------
+
+        const suffix =
+            SEPARATOR +
+            state.translation;
+
+
+        if (
+            current.endsWith(
+                suffix
+            )
+        ) {
+
+            return current.slice(
+                0,
+                -suffix.length
+            );
+        }
+
+
+        // -----------------------------------------------------
+        // 예외적인 경우
+        // -----------------------------------------------------
+
+        const index =
+            current.lastIndexOf(
+                state.translation
+            );
+
+
+        if (
+            index >= 0
+        ) {
+
+            let before =
+                current.slice(
+                    0,
+                    index
+                );
+
+
+            if (
+                element instanceof HTMLTextAreaElement
+            ) {
+
+                if (
+                    before.endsWith('\n')
+                ) {
+
+                    before =
+                        before.slice(
+                            0,
+                            -1
+                        );
+                }
+
+            } else {
+
+                if (
+                    before.endsWith(
+                        SEPARATOR
+                    )
+                ) {
+
+                    before =
+                        before.slice(
+                            0,
+                            -SEPARATOR.length
+                        );
+                }
+            }
+
+
+            const after =
+                current.slice(
+                    index +
+                    state.translation.length
+                );
+
+
+            return (
+                before +
+                after
+            );
+        }
+
+
+        return current;
+    }
+
 
     // =========================================================
     // 제목 번역
     // =========================================================
 
-    async function translateTitle(input) {
+    async function translateTitle(
+        input
+    ) {
 
         const state =
             getNormalState(input);
 
+
         if (
             state.running
         ) {
+
             return;
         }
 
-        const text =
-            input.value.trim();
 
-        if (
-            !text ||
-            !hasJapanese(text)
-        ) {
-            return;
-        }
+        let text =
+            input.value;
+
+
+        // 기존 번역 제거
 
         if (
-            state.lastText === text
+            state.original &&
+            state.translation
         ) {
+
+            text =
+                removeInlineTranslation(
+                    input
+                );
+        }
+
+
+        const trimmed =
+            text.trim();
+
+
+        if (
+            !trimmed ||
+            !hasJapanese(trimmed)
+        ) {
+
             return;
         }
+
+
+        state.original =
+            trimmed;
+
 
         state.running =
             true;
 
+
         try {
 
             const korean =
-                await translate(text);
+                await translate(
+                    trimmed
+                );
 
-            /*
-             * 번역 중 제목 변경 확인
-             */
+
+            const current =
+                state.translation
+                    ? removeInlineTranslation(input).trim()
+                    : input.value.trim();
+
+
             if (
-                input.value.trim() !== text
+                current !== trimmed
             ) {
+
                 return;
             }
 
-            let result =
-                `${text} / ${korean}`;
 
-            /*
-             * maxlength=256
-             */
+            let result =
+                trimmed +
+                SEPARATOR +
+                korean;
+
+
+            // 제목 maxlength 대응
+
             if (
                 result.length > 256
             ) {
 
                 const prefix =
-                    `${text} / `;
+                    trimmed +
+                    SEPARATOR;
+
 
                 result =
                     prefix +
@@ -737,16 +946,52 @@
                         0,
                         Math.max(
                             0,
-                            256 - prefix.length
+                            256 -
+                            prefix.length
                         )
                     );
             }
 
-            input.value =
-                result;
 
-            state.lastText =
-                text;
+            state.translation =
+                korean;
+
+
+            state.internal =
+                true;
+
+
+            try {
+
+                input.value =
+                    result;
+
+
+                // 커서는 원문 끝
+
+                const position =
+                    trimmed.length;
+
+
+                input.setSelectionRange(
+                    position,
+                    position
+                );
+
+            } finally {
+
+                state.internal =
+                    false;
+            }
+
+
+            console.log(
+                '[일→한 제목]',
+                trimmed,
+                '→',
+                korean
+            );
+
 
         } catch (error) {
 
@@ -762,61 +1007,140 @@
         }
     }
 
+
     // =========================================================
     // 댓글 번역
     // =========================================================
 
-    async function translateReply(textarea) {
+    async function translateReply(
+        textarea
+    ) {
 
         const state =
             getNormalState(textarea);
 
+
         if (
             state.running
         ) {
+
             return;
         }
 
-        const text =
-            textarea.value.trim();
 
-        if (
-            !text ||
-            !hasJapanese(text)
-        ) {
-            return;
-        }
+        let text =
+            textarea.value;
+
+
+        // 기존 한국어 번역 제거
 
         if (
-            state.lastText === text
+            state.original &&
+            state.translation
         ) {
+
+            text =
+                removeInlineTranslation(
+                    textarea
+                );
+        }
+
+
+        const trimmed =
+            text.trim();
+
+
+        if (
+            !trimmed ||
+            !hasJapanese(trimmed)
+        ) {
+
             return;
         }
+
+
+        state.original =
+            trimmed;
+
 
         state.running =
             true;
 
+
         try {
 
             const korean =
-                await translate(text);
+                await translate(
+                    trimmed
+                );
 
-            /*
-             * 번역 중 댓글 변경 확인
-             */
+
+            const current =
+                state.translation
+                    ? removeInlineTranslation(textarea).trim()
+                    : textarea.value.trim();
+
+
             if (
-                textarea.value.trim() !== text
+                current !== trimmed
             ) {
+
                 return;
             }
 
-            textarea.value =
-                text +
+
+            state.translation =
+                korean;
+
+
+            /*
+             * ★ 댓글은 줄바꿈
+             *
+             * 日本語
+             * 한국어
+             */
+
+            const result =
+                trimmed +
                 '\n' +
                 korean;
 
-            state.lastText =
-                text;
+
+            state.internal =
+                true;
+
+
+            try {
+
+                textarea.value =
+                    result;
+
+
+                // 커서는 일본어 원문 끝
+
+                const position =
+                    trimmed.length;
+
+
+                textarea.setSelectionRange(
+                    position,
+                    position
+                );
+
+            } finally {
+
+                state.internal =
+                    false;
+            }
+
+
+            console.log(
+                '[일→한 댓글]',
+                trimmed,
+                '→',
+                korean
+            );
+
 
         } catch (error) {
 
@@ -832,8 +1156,9 @@
         }
     }
 
+
     // =========================================================
-    // 제목 / 댓글 input 감지
+    // 제목 / 댓글 Input
     // =========================================================
 
     document.addEventListener(
@@ -843,24 +1168,39 @@
             const target =
                 event.target;
 
+
             // -------------------------------------------------
             // 제목
             // -------------------------------------------------
 
             if (
                 target instanceof HTMLInputElement &&
-                target.matches(TITLE_SELECTOR)
+                target.matches(
+                    TITLE_SELECTOR
+                )
             ) {
 
                 const state =
                     getNormalState(target);
 
-                if (state.timer) {
+
+                if (
+                    state.internal
+                ) {
+
+                    return;
+                }
+
+
+                if (
+                    state.timer
+                ) {
 
                     clearTimeout(
                         state.timer
                     );
                 }
+
 
                 state.timer =
                     setTimeout(
@@ -868,6 +1208,7 @@
 
                             state.timer =
                                 null;
+
 
                             translateTitle(
                                 target
@@ -877,8 +1218,10 @@
                         DELAY
                     );
 
+
                 return;
             }
+
 
             // -------------------------------------------------
             // 댓글
@@ -886,18 +1229,32 @@
 
             if (
                 target instanceof HTMLTextAreaElement &&
-                target.matches(REPLY_SELECTOR)
+                target.matches(
+                    REPLY_SELECTOR
+                )
             ) {
 
                 const state =
                     getNormalState(target);
 
-                if (state.timer) {
+
+                if (
+                    state.internal
+                ) {
+
+                    return;
+                }
+
+
+                if (
+                    state.timer
+                ) {
 
                     clearTimeout(
                         state.timer
                     );
                 }
+
 
                 state.timer =
                     setTimeout(
@@ -905,6 +1262,7 @@
 
                             state.timer =
                                 null;
+
 
                             translateReply(
                                 target
@@ -919,22 +1277,23 @@
         true
     );
 
+
     // =========================================================
-    // 최초 실행
+    // 시작
     // =========================================================
 
     scanBody();
 
-    // =========================================================
-    // 동적으로 에디터가 생성되는 경우
-    // =========================================================
 
     const observer =
         new MutationObserver(
             () => {
+
                 scanBody();
+
             }
         );
+
 
     observer.observe(
         document.body,
@@ -944,12 +1303,9 @@
         }
     );
 
-    // =========================================================
-    // 시작
-    // =========================================================
 
     console.log(
-        '[아카라이브 일→한] v11.0 API 키 불필요 버전 활성화'
+        '[아카라이브 일→한] v12.1 활성화'
     );
 
 })();
