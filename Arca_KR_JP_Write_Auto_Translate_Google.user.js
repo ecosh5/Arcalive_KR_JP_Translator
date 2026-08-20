@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         아카라이브 한→일 작성 자동번역 (API 키 불필요)
+// @name         아카라이브 한→일 작성 자동번역
 // @namespace    arca.kroj.writer
-// @version      11.0.0
+// @version      12.1.0
 // @description  아카라이브 제목/본문/댓글 한국어 자동 일본어 번역 - API 키 불필요
 // @match        *://arca.live/*
 // @grant        GM_xmlhttpRequest
@@ -23,15 +23,19 @@
     const REPLY_SELECTOR =
         'textarea.reply-form-textarea';
 
-    // 한국어 판별
+    const SEPARATOR =
+        ' / ';
+
     const KOREAN =
         /[\uac00-\ud7a3]/;
+
 
     // =========================================================
     // 공통
     // =========================================================
 
     function getText(element) {
+
         return (
             element.innerText ||
             element.textContent ||
@@ -41,17 +45,19 @@
             .trim();
     }
 
+
     function hasKorean(text) {
+
         return KOREAN.test(text);
     }
 
+
     // =========================================================
     // Google Translate
-    // 한국어 → 일본어
-    // API KEY 필요 없음
     // =========================================================
 
     function translate(text) {
+
         return new Promise((resolve, reject) => {
 
             const url =
@@ -63,10 +69,13 @@
                 '&q=' +
                 encodeURIComponent(text);
 
+
             GM_xmlhttpRequest({
+
                 method: 'GET',
                 url: url,
                 timeout: 30000,
+
 
                 onload(response) {
 
@@ -76,30 +85,37 @@
                             response.status < 200 ||
                             response.status >= 300
                         ) {
+
                             reject(
                                 new Error(
                                     `번역 요청 오류 ${response.status}`
                                 )
                             );
+
                             return;
                         }
+
 
                         const data =
                             JSON.parse(
                                 response.responseText
                             );
 
+
                         if (
                             !Array.isArray(data) ||
                             !Array.isArray(data[0])
                         ) {
+
                             reject(
                                 new Error(
                                     '번역 결과 형식이 올바르지 않습니다.'
                                 )
                             );
+
                             return;
                         }
+
 
                         const result =
                             data[0]
@@ -113,25 +129,34 @@
                                 )
                                 .join('');
 
-                        if (!result.trim()) {
+
+                        if (
+                            !result.trim()
+                        ) {
+
                             reject(
                                 new Error(
                                     '번역 결과가 없습니다.'
                                 )
                             );
+
                             return;
                         }
+
 
                         resolve(
                             result.trim()
                         );
 
                     } catch (error) {
+
                         reject(error);
                     }
                 },
 
+
                 onerror() {
+
                     reject(
                         new Error(
                             '번역 서버에 연결할 수 없습니다.'
@@ -139,26 +164,32 @@
                     );
                 },
 
+
                 ontimeout() {
+
                     reject(
                         new Error(
-                            '번역 요청 시간이 초과되었습니다.'
+                            '번역 요청이 시간 초과되었습니다.'
                         )
                     );
                 }
+
             });
         });
     }
 
+
     // =========================================================
-    // ID
+    // 본문 ID
     // =========================================================
 
     let idCounter = 0;
 
+
     function makeId() {
 
         idCounter++;
+
 
         return (
             'kroj_' +
@@ -172,15 +203,21 @@
         );
     }
 
+
     function ensureSourceId(p) {
 
-        if (!p.dataset.krojSourceId) {
+        if (
+            !p.dataset.krojSourceId
+        ) {
+
             p.dataset.krojSourceId =
                 makeId();
         }
 
+
         return p.dataset.krojSourceId;
     }
+
 
     function findTranslation(
         editor,
@@ -191,6 +228,7 @@
             `p[data-kroj-translation-for="${CSS.escape(sourceId)}"]`
         );
     }
+
 
     // =========================================================
     // 본문 번역
@@ -205,32 +243,40 @@
             !p ||
             !p.isConnected
         ) {
+
             return;
         }
 
-        // 자동 생성된 일본어 문장은 번역하지 않음
+
         if (
             p.dataset.krojTranslation === '1'
         ) {
+
             return;
         }
+
 
         const text =
             getText(p);
 
+
         if (!text) {
+
             return;
         }
 
-        // 한국어가 없는 문장은 번역하지 않음
+
         if (
             !hasKorean(text)
         ) {
+
             return;
         }
 
+
         const sourceId =
             ensureSourceId(p);
+
 
         let translation =
             findTranslation(
@@ -238,39 +284,47 @@
                 sourceId
             );
 
-        // 같은 원문으로 이미 번역되어 있으면 종료
+
         if (
             translation &&
             translation.dataset.krojSource === text
         ) {
+
             return;
         }
 
-        // 원문이 수정된 경우 기존 번역 삭제
+
         if (translation) {
+
             translation.remove();
+
             translation = null;
         }
+
 
         console.log(
             '[한→일] 본문 번역 요청:',
             text
         );
 
+
         try {
 
             const japanese =
                 await translate(text);
 
+
             if (
                 !p.isConnected
             ) {
+
                 return;
             }
 
-            // 번역하는 동안 원문이 수정되었으면 적용하지 않음
+
             const currentText =
                 getText(p);
+
 
             if (
                 currentText !== text
@@ -283,38 +337,44 @@
                 return;
             }
 
-            // 다른 번역이 이미 생성됐는지 확인
+
             const existing =
                 findTranslation(
                     editor,
                     sourceId
                 );
 
+
             if (existing) {
+
                 return;
             }
 
-            // =================================================
-            // 일본어 문단 생성
-            // =================================================
 
             const jp =
-                document.createElement('p');
+                document.createElement(
+                    'p'
+                );
+
 
             jp.textContent =
                 japanese;
 
+
             jp.dataset.krojTranslation =
                 '1';
+
 
             jp.dataset.krojTranslationFor =
                 sourceId;
 
+
             jp.dataset.krojSource =
                 text;
 
-            // 원문 바로 뒤
+
             p.after(jp);
+
 
             console.log(
                 '[한→일] 본문 번역 완료:',
@@ -322,6 +382,7 @@
                 '→',
                 japanese
             );
+
 
         } catch (error) {
 
@@ -332,8 +393,9 @@
         }
     }
 
+
     // =========================================================
-    // Enter
+    // 본문 Enter
     // =========================================================
 
     function connectEnter(editor) {
@@ -346,84 +408,107 @@
                     event.key !== 'Enter' ||
                     event.shiftKey
                 ) {
+
                     return;
                 }
 
+
                 const selection =
                     window.getSelection();
+
 
                 if (
                     !selection ||
                     !selection.rangeCount
                 ) {
+
                     return;
                 }
 
+
                 let node =
                     selection.anchorNode;
+
 
                 if (
                     node &&
                     node.nodeType === Node.TEXT_NODE
                 ) {
+
                     node =
                         node.parentElement;
                 }
 
+
                 const p =
                     node?.closest?.('p');
+
 
                 if (
                     !p ||
                     !editor.contains(p)
                 ) {
+
                     return;
                 }
+
 
                 const text =
                     getText(p);
 
+
                 if (!text) {
+
                     return;
                 }
 
+
                 event.preventDefault();
 
-                // 새 문단
+
                 const newP =
-                    document.createElement('p');
+                    document.createElement(
+                        'p'
+                    );
+
 
                 newP.innerHTML =
                     '<br>';
 
+
                 p.after(newP);
 
-                // 새 문단으로 커서 이동
+
                 const range =
                     document.createRange();
+
 
                 range.selectNodeContents(
                     newP
                 );
 
+
                 range.collapse(true);
+
 
                 selection.removeAllRanges();
 
                 selection.addRange(range);
 
-                // 방금 입력한 문장 번역
+
                 translateParagraph(
                     editor,
                     p
                 );
+
             },
             true
         );
     }
 
+
     // =========================================================
-    // Blur
+    // 본문 Blur
     // =========================================================
 
     function connectBlur(editor) {
@@ -433,26 +518,32 @@
             event => {
 
                 const p =
-                    event.target.closest?.('p');
+                    event.target.closest?.(
+                        'p'
+                    );
+
 
                 if (
                     !p ||
                     !editor.contains(p)
                 ) {
+
                     return;
                 }
+
 
                 setTimeout(
                     () => {
 
-                        // 다시 본문으로 들어온 경우 무시
                         if (
                             editor.contains(
                                 document.activeElement
                             )
                         ) {
+
                             return;
                         }
+
 
                         translateParagraph(
                             editor,
@@ -467,8 +558,9 @@
         );
     }
 
+
     // =========================================================
-    // Input
+    // 본문 Input
     // =========================================================
 
     function connectInput(editor) {
@@ -476,12 +568,15 @@
         editor.addEventListener(
             'input',
             () => {
+
                 // 입력 중에는 번역하지 않음.
                 // Enter / blur에서 처리.
+
             },
             true
         );
     }
+
 
     // =========================================================
     // 본문 연결
@@ -492,20 +587,27 @@
         if (
             editor.dataset.krojConnected === '1'
         ) {
+
             return;
         }
+
 
         editor.dataset.krojConnected =
             '1';
 
+
         connectEnter(editor);
+
         connectBlur(editor);
+
         connectInput(editor);
+
 
         console.log(
             '[한→일] 본문 연결 완료'
         );
     }
+
 
     function scanBody() {
 
@@ -518,6 +620,7 @@
             );
     }
 
+
     // =========================================================
     // 제목 / 댓글 상태
     // =========================================================
@@ -525,18 +628,29 @@
     const normalStates =
         new WeakMap();
 
+
     function getNormalState(element) {
 
         let state =
             normalStates.get(element);
 
+
         if (!state) {
 
             state = {
+
                 timer: null,
+
                 running: false,
-                lastText: ''
+
+                original: '',
+
+                translation: '',
+
+                internal: false
+
             };
+
 
             normalStates.set(
                 element,
@@ -544,61 +658,258 @@
             );
         }
 
+
         return state;
     }
 
+
     // =========================================================
-    // 제목
+    // 제목 / 댓글 번역문 제거
     // =========================================================
 
-    async function translateTitle(input) {
+    function removeInlineTranslation(
+        element
+    ) {
+
+        const state =
+            getNormalState(element);
+
+
+        if (
+            !state.original ||
+            !state.translation
+        ) {
+
+            return element.value;
+        }
+
+
+        const current =
+            element.value;
+
+
+        // -----------------------------------------------------
+        // 댓글
+        //
+        // 원문
+        // 번역문
+        // -----------------------------------------------------
+
+        if (
+            element instanceof HTMLTextAreaElement
+        ) {
+
+            const suffix =
+                '\n' +
+                state.translation;
+
+
+            if (
+                current.endsWith(
+                    suffix
+                )
+            ) {
+
+                return current.slice(
+                    0,
+                    -suffix.length
+                );
+            }
+        }
+
+
+        // -----------------------------------------------------
+        // 제목
+        //
+        // 원문 / 번역문
+        // -----------------------------------------------------
+
+        const suffix =
+            SEPARATOR +
+            state.translation;
+
+
+        if (
+            current.endsWith(
+                suffix
+            )
+        ) {
+
+            return current.slice(
+                0,
+                -suffix.length
+            );
+        }
+
+
+        // -----------------------------------------------------
+        // 예외적인 경우
+        // -----------------------------------------------------
+
+        const index =
+            current.lastIndexOf(
+                state.translation
+            );
+
+
+        if (
+            index >= 0
+        ) {
+
+            let before =
+                current.slice(
+                    0,
+                    index
+                );
+
+
+            if (
+                element instanceof HTMLTextAreaElement
+            ) {
+
+                if (
+                    before.endsWith('\n')
+                ) {
+
+                    before =
+                        before.slice(
+                            0,
+                            -1
+                        );
+                }
+
+            } else {
+
+                if (
+                    before.endsWith(
+                        SEPARATOR
+                    )
+                ) {
+
+                    before =
+                        before.slice(
+                            0,
+                            -SEPARATOR.length
+                        );
+                }
+            }
+
+
+            const after =
+                current.slice(
+                    index +
+                    state.translation.length
+                );
+
+
+            return (
+                before +
+                after
+            );
+        }
+
+
+        return current;
+    }
+
+
+    // =========================================================
+    // 제목 번역
+    // =========================================================
+
+    async function translateTitle(
+        input
+    ) {
 
         const state =
             getNormalState(input);
 
-        if (state.running) {
-            return;
-        }
-
-        const text =
-            input.value.trim();
 
         if (
-            !text ||
-            !hasKorean(text)
+            state.running
         ) {
+
             return;
         }
 
+
+        let text =
+            input.value;
+
+
+        // 기존 번역 제거
+
         if (
-            state.lastText === text
+            state.original &&
+            state.translation
         ) {
+
+            text =
+                removeInlineTranslation(
+                    input
+                );
+        }
+
+
+        const trimmed =
+            text.trim();
+
+
+        if (
+            !trimmed ||
+            !hasKorean(trimmed)
+        ) {
+
             return;
         }
+
+
+        state.original =
+            trimmed;
+
 
         state.running =
             true;
 
+
         try {
 
             const japanese =
-                await translate(text);
+                await translate(
+                    trimmed
+                );
+
+
+            const current =
+                state.translation
+                    ? removeInlineTranslation(input).trim()
+                    : input.value.trim();
+
 
             if (
-                input.value.trim() !== text
+                current !== trimmed
             ) {
+
                 return;
             }
 
+
             let result =
-                `${text} / ${japanese}`;
+                trimmed +
+                SEPARATOR +
+                japanese;
+
+
+            // 제목 maxlength 대응
 
             if (
                 result.length > 256
             ) {
 
                 const prefix =
-                    `${text} / `;
+                    trimmed +
+                    SEPARATOR;
+
 
                 result =
                     prefix +
@@ -606,16 +917,54 @@
                         0,
                         Math.max(
                             0,
-                            256 - prefix.length
+                            256 -
+                            prefix.length
                         )
                     );
             }
 
-            input.value =
-                result;
 
-            state.lastText =
-                text;
+            state.translation =
+                japanese;
+
+
+            state.internal =
+                true;
+
+
+            try {
+
+                input.value =
+                    result;
+
+
+                /*
+                 * 커서는 원문 끝.
+                 */
+
+                const position =
+                    trimmed.length;
+
+
+                input.setSelectionRange(
+                    position,
+                    position
+                );
+
+            } finally {
+
+                state.internal =
+                    false;
+            }
+
+
+            console.log(
+                '[한→일 제목]',
+                trimmed,
+                '→',
+                japanese
+            );
+
 
         } catch (error) {
 
@@ -631,56 +980,142 @@
         }
     }
 
+
     // =========================================================
-    // 댓글
+    // 댓글 번역
     // =========================================================
 
-    async function translateReply(textarea) {
+    async function translateReply(
+        textarea
+    ) {
 
         const state =
             getNormalState(textarea);
 
-        if (state.running) {
-            return;
-        }
-
-        const text =
-            textarea.value.trim();
 
         if (
-            !text ||
-            !hasKorean(text)
+            state.running
         ) {
+
             return;
         }
 
+
+        let text =
+            textarea.value;
+
+
+        // 기존 일본어 번역 제거
+
         if (
-            state.lastText === text
+            state.original &&
+            state.translation
         ) {
+
+            text =
+                removeInlineTranslation(
+                    textarea
+                );
+        }
+
+
+        const trimmed =
+            text.trim();
+
+
+        if (
+            !trimmed ||
+            !hasKorean(trimmed)
+        ) {
+
             return;
         }
+
+
+        state.original =
+            trimmed;
+
 
         state.running =
             true;
 
+
         try {
 
             const japanese =
-                await translate(text);
+                await translate(
+                    trimmed
+                );
+
+
+            const current =
+                state.translation
+                    ? removeInlineTranslation(textarea).trim()
+                    : textarea.value.trim();
+
 
             if (
-                textarea.value.trim() !== text
+                current !== trimmed
             ) {
+
                 return;
             }
 
-            textarea.value =
-                text +
+
+            state.translation =
+                japanese;
+
+
+            /*
+             * ★ 댓글은 구분자 없이 줄바꿈
+             *
+             * 한국어
+             * 日本語
+             */
+
+            const result =
+                trimmed +
                 '\n' +
                 japanese;
 
-            state.lastText =
-                text;
+
+            state.internal =
+                true;
+
+
+            try {
+
+                textarea.value =
+                    result;
+
+
+                /*
+                 * 커서는 한국어 원문 끝.
+                 */
+
+                const position =
+                    trimmed.length;
+
+
+                textarea.setSelectionRange(
+                    position,
+                    position
+                );
+
+            } finally {
+
+                state.internal =
+                    false;
+            }
+
+
+            console.log(
+                '[한→일 댓글]',
+                trimmed,
+                '→',
+                japanese
+            );
+
 
         } catch (error) {
 
@@ -696,8 +1131,9 @@
         }
     }
 
+
     // =========================================================
-    // 제목 / 댓글 감지
+    // 제목 / 댓글 Input
     // =========================================================
 
     document.addEventListener(
@@ -707,20 +1143,39 @@
             const target =
                 event.target;
 
+
+            // -------------------------------------------------
             // 제목
+            // -------------------------------------------------
+
             if (
                 target instanceof HTMLInputElement &&
-                target.matches(TITLE_SELECTOR)
+                target.matches(
+                    TITLE_SELECTOR
+                )
             ) {
 
                 const state =
                     getNormalState(target);
 
-                if (state.timer) {
+
+                if (
+                    state.internal
+                ) {
+
+                    return;
+                }
+
+
+                if (
+                    state.timer
+                ) {
+
                     clearTimeout(
                         state.timer
                     );
                 }
+
 
                 state.timer =
                     setTimeout(
@@ -728,6 +1183,7 @@
 
                             state.timer =
                                 null;
+
 
                             translateTitle(
                                 target
@@ -737,23 +1193,43 @@
                         DELAY
                     );
 
+
                 return;
             }
 
+
+            // -------------------------------------------------
             // 댓글
+            // -------------------------------------------------
+
             if (
                 target instanceof HTMLTextAreaElement &&
-                target.matches(REPLY_SELECTOR)
+                target.matches(
+                    REPLY_SELECTOR
+                )
             ) {
 
                 const state =
                     getNormalState(target);
 
-                if (state.timer) {
+
+                if (
+                    state.internal
+                ) {
+
+                    return;
+                }
+
+
+                if (
+                    state.timer
+                ) {
+
                     clearTimeout(
                         state.timer
                     );
                 }
+
 
                 state.timer =
                     setTimeout(
@@ -761,6 +1237,7 @@
 
                             state.timer =
                                 null;
+
 
                             translateReply(
                                 target
@@ -775,18 +1252,23 @@
         true
     );
 
+
     // =========================================================
     // 시작
     // =========================================================
 
     scanBody();
 
+
     const observer =
         new MutationObserver(
             () => {
+
                 scanBody();
+
             }
         );
+
 
     observer.observe(
         document.body,
@@ -796,8 +1278,9 @@
         }
     );
 
+
     console.log(
-        '[아카라이브 한→일] v11.0 API 키 불필요 버전 활성화'
+        '[아카라이브 한→일] v12.1 활성화'
     );
 
 })();
