@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         아카라이브 일→한 작성 자동번역
 // @namespace    arca.kroj.writer.jatok
-// @version      12.1.0
-// @description  아카라이브 제목/본문/댓글 일본어 자동 한국어 번역 - API 키 불필요
+// @version      13.0.0
+// @description  아카라이브 제목/본문 자동 번역 + 댓글 / 입력 시 일본어→한국어 번역
 // @match        *://arca.live/*
 // @grant        GM_xmlhttpRequest
 // @connect      translate.googleapis.com
@@ -23,11 +23,8 @@
     const REPLY_SELECTOR =
         'textarea.reply-form-textarea';
 
-    // 제목 구분자
-    const SEPARATOR =
-        ' / ';
+    const SEPARATOR = ' / ';
 
-    // 일본어 판별
     const JAPANESE =
         /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
 
@@ -49,7 +46,6 @@
 
 
     function hasJapanese(text) {
-
         return JAPANESE.test(text);
     }
 
@@ -78,7 +74,6 @@
                 method: 'GET',
                 url: url,
                 timeout: 30000,
-
 
                 onload(response) {
 
@@ -266,12 +261,9 @@
 
 
         if (!text) {
-
             return;
         }
 
-
-        // 일본어가 없는 문장은 번역하지 않음
 
         if (
             !hasJapanese(text)
@@ -337,7 +329,7 @@
                 getText(p);
 
 
-            // 번역하는 동안 원문이 수정되었으면 적용하지 않음
+            // 번역 중 원문 변경
 
             if (
                 currentText !== text
@@ -351,8 +343,6 @@
             }
 
 
-            // 다른 번역이 이미 생성됐는지 확인
-
             const existing =
                 findTranslation(
                     editor,
@@ -361,19 +351,12 @@
 
 
             if (existing) {
-
                 return;
             }
 
 
-            // =================================================
-            // 한국어 문단 생성
-            // =================================================
-
             const ko =
-                document.createElement(
-                    'p'
-                );
+                document.createElement('p');
 
 
             ko.textContent =
@@ -391,8 +374,6 @@
             ko.dataset.krojSource =
                 text;
 
-
-            // 원문 바로 뒤
 
             p.after(ko);
 
@@ -479,7 +460,6 @@
 
 
                 if (!text) {
-
                     return;
                 }
 
@@ -487,12 +467,8 @@
                 event.preventDefault();
 
 
-                // 새 문단
-
                 const newP =
-                    document.createElement(
-                        'p'
-                    );
+                    document.createElement('p');
 
 
                 newP.innerHTML =
@@ -501,8 +477,6 @@
 
                 p.after(newP);
 
-
-                // 새 문단으로 커서 이동
 
                 const range =
                     document.createRange();
@@ -520,8 +494,6 @@
 
                 selection.addRange(range);
 
-
-                // 방금 입력한 문장 번역
 
                 translateParagraph(
                     editor,
@@ -545,9 +517,7 @@
             event => {
 
                 const p =
-                    event.target.closest?.(
-                        'p'
-                    );
+                    event.target.closest?.('p');
 
 
                 if (
@@ -561,8 +531,6 @@
 
                 setTimeout(
                     () => {
-
-                        // 다시 본문으로 들어온 경우 무시
 
                         if (
                             editor.contains(
@@ -597,10 +565,8 @@
         editor.addEventListener(
             'input',
             () => {
-
                 // 입력 중에는 번역하지 않음.
                 // Enter / blur에서 처리.
-
             },
             true
         );
@@ -676,7 +642,9 @@
 
                 translation: '',
 
-                internal: false
+                internal: false,
+
+                revision: 0
 
             };
 
@@ -693,15 +661,13 @@
 
 
     // =========================================================
-    // 제목 / 댓글 번역문 제거
+    // 제목 번역문 제거
     // =========================================================
 
-    function removeInlineTranslation(
-        element
-    ) {
+    function removeTitleTranslation(input) {
 
         const state =
-            getNormalState(element);
+            getNormalState(input);
 
 
         if (
@@ -709,49 +675,9 @@
             !state.translation
         ) {
 
-            return element.value;
+            return input.value;
         }
 
-
-        const current =
-            element.value;
-
-
-        // -----------------------------------------------------
-        // 댓글
-        //
-        // 日本語
-        // 한국어
-        // -----------------------------------------------------
-
-        if (
-            element instanceof HTMLTextAreaElement
-        ) {
-
-            const suffix =
-                '\n' +
-                state.translation;
-
-
-            if (
-                current.endsWith(
-                    suffix
-                )
-            ) {
-
-                return current.slice(
-                    0,
-                    -suffix.length
-                );
-            }
-        }
-
-
-        // -----------------------------------------------------
-        // 제목
-        //
-        // 日本語 / 한국어
-        // -----------------------------------------------------
 
         const suffix =
             SEPARATOR +
@@ -759,86 +685,17 @@
 
 
         if (
-            current.endsWith(
-                suffix
-            )
+            input.value.endsWith(suffix)
         ) {
 
-            return current.slice(
+            return input.value.slice(
                 0,
                 -suffix.length
             );
         }
 
 
-        // -----------------------------------------------------
-        // 예외적인 경우
-        // -----------------------------------------------------
-
-        const index =
-            current.lastIndexOf(
-                state.translation
-            );
-
-
-        if (
-            index >= 0
-        ) {
-
-            let before =
-                current.slice(
-                    0,
-                    index
-                );
-
-
-            if (
-                element instanceof HTMLTextAreaElement
-            ) {
-
-                if (
-                    before.endsWith('\n')
-                ) {
-
-                    before =
-                        before.slice(
-                            0,
-                            -1
-                        );
-                }
-
-            } else {
-
-                if (
-                    before.endsWith(
-                        SEPARATOR
-                    )
-                ) {
-
-                    before =
-                        before.slice(
-                            0,
-                            -SEPARATOR.length
-                        );
-                }
-            }
-
-
-            const after =
-                current.slice(
-                    index +
-                    state.translation.length
-                );
-
-
-            return (
-                before +
-                after
-            );
-        }
-
-
-        return current;
+        return input.value;
     }
 
 
@@ -846,9 +703,7 @@
     // 제목 번역
     // =========================================================
 
-    async function translateTitle(
-        input
-    ) {
+    async function translateTitle(input) {
 
         const state =
             getNormalState(input);
@@ -866,15 +721,13 @@
             input.value;
 
 
-        // 기존 번역 제거
-
         if (
             state.original &&
             state.translation
         ) {
 
             text =
-                removeInlineTranslation(
+                removeTitleTranslation(
                     input
                 );
         }
@@ -897,6 +750,10 @@
             trimmed;
 
 
+        const revision =
+            ++state.revision;
+
+
         state.running =
             true;
 
@@ -909,10 +766,19 @@
                 );
 
 
+            if (
+                revision !==
+                state.revision
+            ) {
+
+                return;
+            }
+
+
             const current =
-                state.translation
-                    ? removeInlineTranslation(input).trim()
-                    : input.value.trim();
+                removeTitleTranslation(
+                    input
+                ).trim();
 
 
             if (
@@ -928,8 +794,6 @@
                 SEPARATOR +
                 korean;
 
-
-            // 제목 maxlength 대응
 
             if (
                 result.length > 256
@@ -967,8 +831,6 @@
                     result;
 
 
-                // 커서는 원문 끝
-
                 const position =
                     trimmed.length;
 
@@ -985,14 +847,6 @@
             }
 
 
-            console.log(
-                '[일→한 제목]',
-                trimmed,
-                '→',
-                korean
-            );
-
-
         } catch (error) {
 
             console.error(
@@ -1009,10 +863,21 @@
 
 
     // =========================================================
-    // 댓글 번역
+    // 댓글
+    //
+    // 자동 번역하지 않음.
+    //
+    // 일본어/
+    //
+    // 를 입력하면
+    //
+    // 일본어
+    // 한국어
+    //
+    // 로 변경
     // =========================================================
 
-    async function translateReply(
+    async function translateReplyBySlash(
         textarea
     ) {
 
@@ -1028,61 +893,164 @@
         }
 
 
-        let text =
+        let value =
             textarea.value;
 
 
-        // 기존 한국어 번역 제거
+        // 반드시 마지막 문자가 / 이어야 함
 
         if (
-            state.original &&
-            state.translation
-        ) {
-
-            text =
-                removeInlineTranslation(
-                    textarea
-                );
-        }
-
-
-        const trimmed =
-            text.trim();
-
-
-        if (
-            !trimmed ||
-            !hasJapanese(trimmed)
+            !value.endsWith('/')
         ) {
 
             return;
         }
 
 
-        state.original =
-            trimmed;
+        // / 제거
+
+        const original =
+            value
+                .slice(
+                    0,
+                    -1
+                )
+                .trim();
+
+
+        if (
+            !original
+        ) {
+
+            return;
+        }
+
+
+        // 일본어가 없으면 무시
+
+        if (
+            !hasJapanese(original)
+        ) {
+
+            return;
+        }
+
+
+        /*
+         * 기존 번역이 붙어 있는 상태에서
+         * 다시 /를 입력한 경우:
+         *
+         * 일본어
+         * 한국어
+         * /
+         *
+         * 가 될 수 있으므로
+         * 기존 번역을 제거한다.
+         */
+
+        let japanese =
+            original;
+
+
+        if (
+            state.original &&
+            state.translation
+        ) {
+
+            const oldSuffix =
+                '\n' +
+                state.translation;
+
+
+            if (
+                japanese.endsWith(
+                    oldSuffix
+                )
+            ) {
+
+                japanese =
+                    japanese.slice(
+                        0,
+                        -oldSuffix.length
+                    ).trim();
+            }
+        }
+
+
+        /*
+         * 혹시 이전 번역 상태가 없더라도
+         * 마지막 줄이 한국어이고
+         * 그 위에 일본어가 있는 경우
+         * 마지막 줄을 번역문으로 간주하지 않음.
+         *
+         * 여기서는 사용자가 직접 /를 누른
+         * 순간의 내용만 번역 대상으로 삼는다.
+         */
+
+
+        const revision =
+            ++state.revision;
 
 
         state.running =
             true;
 
 
+        state.original =
+            japanese;
+
+
         try {
+
+            /*
+             * 번역 시작 전에 /를 제거하고
+             * 현재 원문만 남긴다.
+             */
+
+            state.internal =
+                true;
+
+            try {
+
+                textarea.value =
+                    japanese;
+
+            } finally {
+
+                state.internal =
+                    false;
+            }
+
 
             const korean =
                 await translate(
-                    trimmed
+                    japanese
                 );
 
 
-            const current =
-                state.translation
-                    ? removeInlineTranslation(textarea).trim()
-                    : textarea.value.trim();
-
+            /*
+             * 번역 요청 이후 사용자가
+             * 다시 수정했다면 폐기
+             */
 
             if (
-                current !== trimmed
+                revision !==
+                state.revision
+            ) {
+
+                return;
+            }
+
+
+            /*
+             * 현재 textarea가
+             * 번역 요청 당시의 일본어와
+             * 정확히 같은지 확인
+             */
+
+            if (
+                textarea.value.trim() !==
+                japanese
             ) {
 
                 return;
@@ -1093,15 +1061,8 @@
                 korean;
 
 
-            /*
-             * ★ 댓글은 줄바꿈
-             *
-             * 日本語
-             * 한국어
-             */
-
             const result =
-                trimmed +
+                japanese +
                 '\n' +
                 korean;
 
@@ -1116,10 +1077,12 @@
                     result;
 
 
-                // 커서는 일본어 원문 끝
+                /*
+                 * 커서는 일본어 끝
+                 */
 
                 const position =
-                    trimmed.length;
+                    japanese.length;
 
 
                 textarea.setSelectionRange(
@@ -1136,7 +1099,7 @@
 
             console.log(
                 '[일→한 댓글]',
-                trimmed,
+                japanese,
                 '→',
                 korean
             );
@@ -1158,7 +1121,9 @@
 
 
     // =========================================================
-    // 제목 / 댓글 Input
+    // 댓글 입력 감지
+    //
+    // ★ 댓글은 /가 있을 때만 실행
     // =========================================================
 
     document.addEventListener(
@@ -1169,9 +1134,9 @@
                 event.target;
 
 
-            // -------------------------------------------------
+            // =================================================
             // 제목
-            // -------------------------------------------------
+            // =================================================
 
             if (
                 target instanceof HTMLInputElement &&
@@ -1223,9 +1188,9 @@
             }
 
 
-            // -------------------------------------------------
+            // =================================================
             // 댓글
-            // -------------------------------------------------
+            // =================================================
 
             if (
                 target instanceof HTMLTextAreaElement &&
@@ -1240,6 +1205,21 @@
 
                 if (
                     state.internal
+                ) {
+
+                    return;
+                }
+
+
+                /*
+                 * 댓글은 자동 번역하지 않는다.
+                 *
+                 * 마지막에 /가 입력된 경우에만
+                 * 번역을 시작한다.
+                 */
+
+                if (
+                    !target.value.endsWith('/')
                 ) {
 
                     return;
@@ -1264,12 +1244,12 @@
                                 null;
 
 
-                            translateReply(
+                            translateReplyBySlash(
                                 target
                             );
 
                         },
-                        DELAY
+                        100
                     );
             }
 
@@ -1305,7 +1285,7 @@
 
 
     console.log(
-        '[아카라이브 일→한] v12.1 활성화'
+        '[아카라이브 일→한] v13.0 활성화'
     );
 
 })();
